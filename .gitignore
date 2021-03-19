@@ -21,6 +21,8 @@ Pipfile.lock
 
 # Data for Training
 *.npz
+data/
+*preprocessing*
 
 # Data from Training
 output/
@@ -29,7 +31,7 @@ lightning_logs/
 **.pt
 
 # Test & Backups
-#*test.py*
+*test.py*
 *backup*
 **/*backup*/
 
