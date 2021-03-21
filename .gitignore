@@ -22,16 +22,16 @@ Pipfile.lock
 # Data for Training
 *.npz
 data/
-*preprocessing*
 
 # Data from Training
-output/
+*output*/
 lightning_logs/
 *.pt
 **.pt
+*submission*
 
 # Test & Backups
-*test.py*
+*test*.py
 *backup*
 **/*backup*/
 

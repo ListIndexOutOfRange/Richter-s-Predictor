@@ -1,7 +1,6 @@
-import os
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import random_split, DataLoader
-from . import LSTMDataset
+from . import Dataset
 
 
 class DataModule(LightningDataModule):
@@ -10,8 +9,8 @@ class DataModule(LightningDataModule):
         It's basically a wrapper around dataloaders.
     """  
     
-    def __init__(self, rootdir: str,  batch_size: int=64, num_workers: int=4) -> None:
-        """ Instanciate a Datamodule able to return three Pytorch DataLoaders (train/val/test).
+    def __init__(self, rootdir: str, batch_size: int=64, num_workers: int=4) -> None:
+        """ Instanciate a Datamodule turn three Pytorch DataLoaders (train/val/test).
         Args:
             rootdir (str): Path to the folder containing the preprocessed npz file.
             batch_size (int, optional): Training batch size. Defaults to 64.
@@ -23,8 +22,8 @@ class DataModule(LightningDataModule):
         self.batch_size  = batch_size
         self.num_workers = num_workers
 
-    def get_lengths(self):
-        total_length = len(os.listdir(self.rootdir))
+    @staticmethod
+    def get_lengths(total_length):
         train_length, val_length = int(0.8*total_length), int(0.2*total_length)
         if train_length + val_length != total_length: # round error
             val_length += 1
@@ -36,12 +35,12 @@ class DataModule(LightningDataModule):
             stage (str, optional): 'fit' or 'test'.
                                    Init two splitted dataset or one full. Defaults to None.
         """
-        train_length, val_length = self.get_lengths()
         if stage == 'fit' or stage is None:
-            full_set = LSTMDataset(self.rootdir)
+            full_set = Dataset(self.rootdir)
+            train_length, val_length = self.get_lengths(len(full_set))
             self.train_set, self.val_set = random_split(full_set, [train_length, val_length])
         if stage == 'test' or stage is None:
-            self.test_set = LSTMDataset(self.rootdir)
+            self.test_set  = Dataset(self.rootdir)
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(self.train_set, num_workers=self.num_workers, shuffle=True,

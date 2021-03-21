@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 import torch.nn as nn
 from torch.optim import Adam
@@ -9,10 +8,12 @@ from typing import Tuple, Dict
 torch.autograd.set_detect_anomaly(True)
 
 
-class LightningLSTM(pl.LightningModule):
+class Autoencoder(pl.LightningModule):
+
+    VOCAB_SIZES = [31, 1428, 12568]
     
-    def __init__(self, embedding_dim: int, hidden_dim: int, output_dim: int,
-                 dropout: float=0.2, lr: float=1e-3, weight_decay: float=5e-4) -> None:
+    def __init__(self, embedding_dim:int, hidden_dim: int,
+                 lr: float=1e-3, weight_decay: float=5e-4) -> None:
         """
         The call to the Lightning method save_hyperparameters() make every hp accessible through
         self.hparams. e.g: self.hparams.lr. It also sends them to TensorBoard.
@@ -20,15 +21,15 @@ class LightningLSTM(pl.LightningModule):
         """
         super().__init__()
         self.save_hyperparameters()
-        self.lstm    = nn.LSTM(embedding_dim, hidden_dim, num_layers=1, batch_first=True)
-        self.linear  = nn.Linear(hidden_dim, output_dim)
-        self.sigmoid = nn.Sigmoid()
-        self.dropout = nn.Dropout(p=dropout)
-        self.loss    = torch.nn.BCEWithLogitsLoss()
+        self.embedding = nn.Embedding(self.VOCAB_SIZES[2], embedding_dim)
+        self.encoder   = nn.Linear(embedding_dim, hidden_dim)
+        self.decoder1  = nn.Linear(hidden_dim, self.VOCAB_SIZES[0])
+        self.decoder2  = nn.Linear(hidden_dim, self.VOCAB_SIZES[1])
+        self.loss      = nn.CrossEntropyLoss()
 
-    def forward(self, sequence: torch.Tensor) -> torch.Tensor:
-        self.lstm_outputs, (self.ht, self.ct) = self.lstm(sequence)
-        return self.sigmoid(self.linear(self.dropout(self.ht[-1])))
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        self.features = self.encoder(self.embedding(x))
+        return self.decoder1(self.features), self.decoder2(self.features)
 
     def configure_optimizers(self) -> Dict:
         """ Instanciate an optimizer and a learning rate scheduler to be used during training.
@@ -43,10 +44,19 @@ class LightningLSTM(pl.LightningModule):
         scheduler = ReduceLROnPlateau(optimizer,
                                       mode     = 'min',
                                       factor   = 0.25,
-                                      patience = 20,
+                                      patience = 5,
                                       verbose  = False)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'val_loss'}
 
+    def shared_step(self, batch):
+        inputs, targets1, targets2 = batch    
+        outputs1, outputs2 = self(inputs)
+        loss1 = self.loss(outputs1, targets1)
+        loss2 = self.loss(outputs2, targets2)
+        self.log('Train/Loss1', loss1)
+        self.log('Train/Loss2', loss2)
+        loss = 0.5 * (loss1 + loss2)
+        return loss
 
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> Dict:
         """ Perform the classic training step (infere + compute loss) on a batch.
@@ -61,10 +71,7 @@ class LightningLSTM(pl.LightningModule):
             Dict: Scalars computed in this function. Note that this dict is accesible from 
                   'hooks' methods from Lightning, e.g on_epoch_start, on_epoch_end, etc...
         """
-        inputs, targets = batch    
-        outputs = self(inputs)
-        loss    = self.loss(outputs, targets)
-        self.log('Loss/Train', loss)
+        loss = self.shared_step(batch)
         return {'loss': loss}
     
     def validation_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> Dict:
@@ -79,11 +86,5 @@ class LightningLSTM(pl.LightningModule):
             Dict: Scalars computed in this function. Note that this dict is accesible from
                   'hooks' methods from Lightning, e.g on_epoch_start, on_epoch_end, etc...
         """
-        inputs, targets = batch    
-        outputs = self(inputs)
-        loss    = self.loss(outputs, targets)
-        self.log('Loss/Validation', loss)
+        loss = self.shared_step(batch)
         return {'val_loss': loss}
-
-    def test_step(self, batch: torch.Tensor, batch_idx) ->  torch.Tensor:
-        """ Not implemented. """
